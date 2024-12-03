@@ -1,0 +1,5 @@
+#Config file for scenarios definitions
+game_setup: 'cooperative_colective'
+#game_setup='cooperative'
+#game_setup='competitive'
+reward_type: 'excess_cost_max'

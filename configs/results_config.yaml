@@ -1,0 +1,27 @@
+#tyhe folder from which to create analyzer objects
+# folder_name: Train_fcul1_Test_testing
+# folder_name: Train_fcul1-3ag-CC-newobs_Test_testing
+
+
+exp_group1:
+  description: Compare IL and CC for 3 agents
+  experiments:
+    exp1:
+      folder: Train_fcul1-3ag-IL-newobs_Test_testing
+      label: IL
+    exp2:
+      folder: Train_fcul1-3ag-CC-newobs_Test_testing
+      label: CC
+  baseline_name: testing_baseline_3ag
+
+
+exp_group2:
+  description: Compare IL and CC for 3 agents (oldnet)
+  experiments:
+    exp1:
+      folder: Train_fcul1-3ag-IL-oldnet_Test_testing
+      label: IL
+    exp2:
+      folder: Train_fcul1-3ag-CC-oldnet_Test_testing
+      label: CC
+  baseline_name: testing_baseline_3ag

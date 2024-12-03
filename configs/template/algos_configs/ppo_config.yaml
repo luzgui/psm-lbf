@@ -1,0 +1,97 @@
+#training
+lr: 0.00001
+num_sgd_iter: 1
+train_batch_size: 128
+_enable_learner_api: False
+model:
+  custom_model: cc_shift_mask
+  fcnet_hiddens: [128,128]
+  fcnet_activation: relu
+  custom_model_config:
+    fcnet_hiddens: [128,128]
+
+#environment
+env: flexenv
+disable_env_checking: True
+
+#debugging
+seed: 1024
+log_level: DEBUG
+
+#rollouts
+num_rollout_workers: 1
+
+#Framework
+framework: tf2
+eager_tracing: True
+
+#RLModule
+_enable_rl_module_api: False
+
+#Resources
+# num_cpus_per_worker: 1
+# num_cpus_per_trainer_worker: 1
+# num_trainer_workers: 1
+
+#Evaluation
+# evaluation_interval: 1
+# evaluation_num_workers: 1
+# evaluation_num_episodes: 10
+
+
+
+
+# num_workers: 4
+# num_envs_per_worker: 2
+# env_config:
+#   reward_shaping: true
+#   observation_filter: "NoFilter"
+#   horizon: 100
+#   action_repeat: 4
+# gamma: 0.99
+# lambda: 0.95
+# lr: 0.0003
+# num_sgd_iter: 10
+# sgd_minibatch_size: 256
+# train_batch_size: 2048
+# timesteps_per_iteration: 2048
+# model:
+#   framework: tf
+#   use_gae: true
+#   vf_share_layers: true
+#   max_seq_len: 32
+#   learning_rate: 0.0003
+#   num_layers: 2
+#   hidden_dim: 64
+#   activation: relu
+#   use_critic: true
+#   use_hiddens_for_v: true
+#   vf_loss_coeff: 0.5
+#   entropy_coeff: 0.01
+#   grad_clip: 0.5
+#   eps: 0.2
+#   dueling: false
+#   double_q: false
+#   target_network_update_freq: 1000
+#   target_network_mix: 0.01
+#   use_moving_averages: false
+#   use_exploration_bonus: false
+#   exploration_bonus_coeff: 0.1
+#   exploration_bonus_temperature: 1.0
+#   use_softmax_exploration: false
+#   use_expert_iter: false
+#   use_proximal_policy_optimization: true
+#   use_policy_delay: true
+#   compress_observations: false
+#   observation_filter: "NoFilter"
+#   use_observation_normalization: true
+#   use_recurrent_policy: false
+#   num_recurrent_layers: 1
+#   recurrent_activation: tanh
+#   max_seq_len: 32
+#   use_trajectory_view_buffer: false
+#   use_trajectory_filters: false
+#   trajectory_filter_threshold: 0.0
+#   use_trajectory_checkpointer: false
+#   use_pytree_state: false
+#   use_deque_replay_buffer: false
