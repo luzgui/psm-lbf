@@ -49,7 +49,7 @@ configs_folder=cwd / 'configs'
 algos_config = configs_folder / 'algos_configs'
 
 #%% exp_name + get configs
-exp_name=YAMLParser().load_yaml(configs_folder / 'exp_name.yaml')['exp_name']
+exp_name = YAMLParser().load_yaml(configs_folder / 'exp_name.yaml')['exp_name']
 configs=ConfigsParser(configs_folder, exp_name)
 
 file_experiment, algo_config,env_config=configs.get_configs()

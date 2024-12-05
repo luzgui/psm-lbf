@@ -50,7 +50,7 @@ from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from termcolor import colored
 
-from models2 import *
+# from models2 import *
 #debug
 from icecream import ic
 import pdb

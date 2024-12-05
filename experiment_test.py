@@ -51,7 +51,7 @@ from datetime import datetime
 # from shiftenvRLlib import ShiftEnv
 # from auxfunctions_shiftenv import *
 # from plotutils import *
-from models2 import ActionMaskModel, CCActionMaskModel
+# from models2 import ActionMaskModel, CCActionMaskModel
 
 
 
@@ -65,8 +65,8 @@ from trainable import *
 # from auxfunctions_CC import *
 
 # Custom Model
-ModelCatalog.register_custom_model('shift_mask', ActionMaskModel)
-ModelCatalog.register_custom_model("cc_shift_mask", CCActionMaskModel)
+# ModelCatalog.register_custom_model('shift_mask', ActionMaskModel)
+# ModelCatalog.register_custom_model("cc_shift_mask", CCActionMaskModel)
 
 from ray.rllib.env.wrappers.multi_agent_env_compatibility import MultiAgentEnvCompatibility
 
