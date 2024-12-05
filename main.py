@@ -36,6 +36,7 @@ from experiment import Experiment
 from trainable import Trainable
 from dataprocessor import YAMLParser
 from utilities import ConfigsParser
+from experiment_test import ExperimentTest
 
 from env_debug import main_loop
 
@@ -51,20 +52,22 @@ algos_config = configs_folder / 'algos_configs'
 exp_name=YAMLParser().load_yaml(configs_folder / 'exp_name.yaml')['exp_name']
 configs=ConfigsParser(configs_folder, exp_name)
 
-file_experiment, algo_config=configs.get_configs()
-
+file_experiment, algo_config,env_config=configs.get_configs()
+train=YAMLParser().load_yaml(file_experiment)['train']
+test=YAMLParser().load_yaml(file_experiment)['test']
 #%%
-
-env_for=ForagingEnv_r(players=2,
-                  max_player_level=5,
-                  field_size=(5,5),
-                  max_food=5,
-                  sight=2,
-                  max_episode_steps=100,
-                  force_coop=True,
-                  normalize_reward=True,
-                  grid_observation=False,
-                  penalty=0.0)
+env_config=YAMLParser().load_yaml(env_config)
+env_for=ForagingEnv_r(players=env_config['players'],
+                  max_player_level=env_config['max_player_level'],
+                  field_size=(env_config['field_size_x'],
+                              env_config['field_size_y']),
+                  max_food=env_config['max_food'],
+                  sight=env_config['sight'],
+                  max_episode_steps=env_config['max_episode_steps'],
+                  force_coop=env_config['force_coop'],
+                  normalize_reward=env_config['normalize_reward'],
+                  grid_observation=env_config['grid_observation'],
+                  penalty=env_config['penalty'])
 
 
 env_c=MultiAgentEnvCompatibility(env_for)
@@ -74,6 +77,7 @@ def env_creator(config):
     return MultiAgentEnvCompatibility(env_for)
 
 register_env("lb-for-mas", env_creator)
+# register_env("lb-for-mas", env_for)
 
 
 #%% run the environment with random actions
@@ -94,36 +98,50 @@ obs2=env_for.step(actions)
 
 
 #%%
-experiment=Experiment(env_for, file_experiment)
-config=experiment.make_algo_config(algo_config)
-config_tune=experiment.make_tune_config()
-config_run=experiment.make_run_config(raylog.as_posix())
-
-resources=experiment.get_resources()
-trainable_obj=Trainable(file_experiment)
-trainable_func=trainable_obj.trainable
-trainable_resources = tune.with_resources(trainable_func, resources)
-
-spill_1=raylog / 'spill1'
-spill_2=raylog / 'spill2'
-
-ray.init(_system_config={"local_fs_capacity_threshold": 0.99,
-                         "object_spilling_config": json.dumps({"type": "filesystem",
-                                                               "params": {"directory_path":[spill_1.as_posix(),
-                                                                                            spill_2.as_posix()],}},)},)
-
-tuner = tune.Tuner(
-      trainable_resources,
-      param_space=config,
-      tune_config=config_tune,
-      run_config=config_run)
-
-
-
-
-results=tuner.fit()
+if train:
+    experiment=Experiment(env_for, file_experiment)
+    config=experiment.make_algo_config(algo_config)
+    config_tune=experiment.make_tune_config()
+    config_run=experiment.make_run_config(raylog.as_posix())
+    
+    resources=experiment.get_resources()
+    trainable_obj=Trainable(file_experiment)
+    trainable_func=trainable_obj.trainable
+    trainable_resources = tune.with_resources(trainable_func, resources)
+    
+    spill_1=raylog / 'spill1'
+    spill_2=raylog / 'spill2'
+    
+    ray.init(_system_config={"local_fs_capacity_threshold": 0.99,
+                              "object_spilling_config": json.dumps({"type": "filesystem",
+                                                                    "params": {"directory_path":[spill_1.as_posix(),
+                                                                                                spill_2.as_posix()],}},)},)
+    
+    tuner = tune.Tuner(
+          trainable_resources,
+          param_space=config,
+          tune_config=config_tune,
+          run_config=config_run)
+    
+    results=tuner.fit()
 
 
+
+#%% Test
+if test:
+    test=ExperimentTest(env_c,
+              exp_name, 
+              raylog,
+              file_experiment,
+              trainable_resources)
+    
+    tester=test.get_tester(trainable_resources)
+    
+    def policy_mapping_fn(agent_id):
+        'Policy mapping function'
+        return 'pol_' + agent_id
+    
+    main_loop(1,env_for,tester,policy_mapping_fn)
 #%%
 # trainer=PPO(config)
 # trainer.train()
@@ -132,54 +150,7 @@ results=tuner.fit()
 
 #%%
 
-        
-        
-
-
-# def get_env_name(s,f,p,c):
-    
-#     env_name="Foraging-{0}x{0}-{1}p-{2}f{3}-v0".format(s, p, f, "-coop" if c else "")
-
-#     register(
-#         id=env_name,
-#         entry_point="lbforaging.foraging:ForagingEnv",
-#         kwargs={
-#             "players": p,
-#             "max_player_level": 3,
-#             "field_size": (s, s),
-#             "max_food": f,
-#             "sight": s,
-#             "max_episode_steps": 50,
-#             "force_coop": c,
-#         },
-#     )
-    
-#     print('created and registered environment: ', env_name)
-#     return env_name
-
-# #%%
-
-# env = gym.make(get_env_name(s=6, p=2, f=2, c=True))
-# main(env,10,render=True)
-
-# k=0
-# while k < 15:
-#     print(env.action_space.sample())
-#     k+=1
-
-
-    
-# #%%
-
-# env = gym.make(get_env_name(s=6, p=2, f=2, c=True))
-# env.reset()
-# env.render()
-# actions=env.action_space.sample()
-# print(actions)
-# env.step(actions)
-# env.render()
-# env.close()
-    
-    
 
         
+        
+

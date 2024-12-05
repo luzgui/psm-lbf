@@ -8,7 +8,7 @@ Created on Wed Oct 30 10:42:05 2024
 
 import time
 
-def _game_loop(environment, render):
+def _game_loop(environment, render,tester, pol_func):
     """
     """
     obs = environment.reset()
@@ -23,7 +23,11 @@ def _game_loop(environment, render):
         
         actions={}
         for ag in environment.agents_id:
-            actions[ag]=environment.action_space.sample()
+            if tester==[]:
+                actions[ag]=environment.action_space.sample()
+            else:
+                actions = {aid: tester.compute_single_action(obs[aid],
+                                                             policy_id=pol_func(aid)) for aid in environment.agents_id}
         
         # actions = environment.action_space.sample()
         # actions={'p0':actions}
@@ -45,9 +49,9 @@ def _game_loop(environment, render):
         iteration+=1
     # print(env.players[0].score, env.players[1].score)
     
-def main_loop(environment,game_count=10, render=False):
+def main_loop(game_count,environment,tester, pol_func):
     # env = gym.make("Foraging-8x8-1p-1f-v2")
     obs = environment.reset()
-    
+    render=True
     for episode in range(game_count):
-        _game_loop(environment, render)
+        _game_loop(environment, render, tester, pol_func)

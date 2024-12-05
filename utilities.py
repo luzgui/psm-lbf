@@ -68,11 +68,12 @@ class ConfigsParser():
         self.experiment_config=self.exp_folder / files['experiment_config']
         algo_config_file=YAMLParser().load_yaml(self.experiment_config)['algorithm']['config']
         self.algo_config_file=self.exp_folder /'algos_configs' / algo_config_file
+        self.env_config=self.exp_folder / files['env_config']
 
         
         
     def get_configs(self):
-        return self.experiment_config, self.algo_config_file
+        return self.experiment_config, self.algo_config_file, self.env_config
     
     def print_experiment_info(self):
         from dataprocessor import YAMLParser #import here due to circular error
