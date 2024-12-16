@@ -1,8 +1,8 @@
 # experiment config
 exp_name: local-debug
 
-train: False
-test: True
+train: True
+test: False
 
 pol_type: agent_pol #shared_pol shared policy or each agent will have its own policy
 
@@ -20,7 +20,7 @@ metric: episode_reward_mean
 verbose: 0
 
 #trainable config
-n_iters: 101
+n_iters: 10
 checkpoint_freq: 50
 
 #resources
@@ -28,6 +28,7 @@ num_cpu: 1.0
 num_gpu: 0.0
 cpu_factor: 6
 
+spill_dir: /home/omega/Documents/FCUL/Projects/FlexEnvMas/raylog/spill1
 #resources
 # b={'CPU':3,'GPU':0.1}
 # resources=tune.PlacementGroupFactory([b]*10)

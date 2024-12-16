@@ -82,16 +82,16 @@ register_env("lb-for-mas", env_creator)
 
 #%% run the environment with random actions
 
-main_loop(env_for,game_count=1, render=True)
+# main_loop(env_for,game_count=1, render=True)
 
 #%%
-obs=env_for.reset()
+# obs=env_for.reset()
 # env_for.render()
 # # actions=env_for.action_space.sample()
-actions={'p0':0,'p1':2}
+# actions={'p0':0,'p1':2}
 # actions={'p0':0}
-print(actions)
-obs2=env_for.step(actions)
+# print(actions)
+# obs2=env_for.step(actions)
 # env_for.render()
 # env_for.close()
 # # env.check_multiagent_environments(env_c)
@@ -109,13 +109,9 @@ if train:
     trainable_func=trainable_obj.trainable
     trainable_resources = tune.with_resources(trainable_func, resources)
     
-    spill_1=raylog / 'spill1'
-    spill_2=raylog / 'spill2'
-    
     ray.init(_system_config={"local_fs_capacity_threshold": 0.99,
-                              "object_spilling_config": json.dumps({"type": "filesystem",
-                                                                    "params": {"directory_path":[spill_1.as_posix(),
-                                                                                                spill_2.as_posix()],}},)},)
+                             "object_spilling_config": json.dumps({"type": "filesystem",
+                                                                   "params": {"directory_path":[experiment.config['spill_dir']],}},)},)
     
     tuner = tune.Tuner(
           trainable_resources,
