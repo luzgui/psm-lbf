@@ -131,6 +131,7 @@ class ExperimentTest():
     
     
     def get_tester(self, trainable):
+
         experiment_path=os.path.join(self.dir, self.exp_name)
         # import pdb
         # pdb.pdb.set_trace()
@@ -151,6 +152,8 @@ class ExperimentTest():
         
         utilities.print_info('num_workers changed sue to resource scarcicity')
         config['num_workers']=1
+        config['num_gpus']=0
+        config['num_gpus_per_worker']=0
         checkpoint=best_res.checkpoint
         tester=self.tester(config, env=config["env"])
         tester.restore(checkpoint)

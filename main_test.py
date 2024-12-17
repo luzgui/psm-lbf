@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec 17 18:56:12 2024
+
+@author: omega
+"""
 import argparse
 import logging
 import random
@@ -48,18 +55,24 @@ raylog=cwd / 'raylog'
 configs_folder=cwd / 'configs'
 algos_config = configs_folder / 'algos_configs'
 
+
+
 #%% exp_name + get configs
 train_exp=YAMLParser().load_yaml(configs_folder / 'exp_name.yaml')['exp_name']
+test_exp=YAMLParser().load_yaml(configs_folder / 'test_config.yaml')['exp_name']
 configs_train=ConfigsParser(configs_folder, train_exp)
-file_experiment, algo_config,train_env_config=configs_train.get_configs()
+configs_test=ConfigsParser(configs_folder, test_exp)
+
+train_file_experiment, algo_config,_=configs_train.get_configs()
+test_file_experiment,_,test_env_config=configs_test.get_configs()
 
 #%%
-train=YAMLParser().load_yaml(file_experiment)['train']
+test=YAMLParser().load_yaml(test_file_experiment)['test']
 
-#%%
-if train:
+#%% Test
+if test:
     
-    env_config=YAMLParser().load_yaml(train_env_config)
+    env_config=YAMLParser().load_yaml(test_env_config)
     env_for=ForagingEnv_r(players=env_config['players'],
                       max_player_level=env_config['max_player_level'],
                       field_size=(env_config['field_size_x'],
@@ -81,54 +94,21 @@ if train:
 
     register_env("lb-for-mas", env_creator)
     
-    experiment=Experiment(env_for, file_experiment)
-    config=experiment.make_algo_config(algo_config)
-    config_tune=experiment.make_tune_config()
-    config_run=experiment.make_run_config(raylog.as_posix())
     
-    resources=experiment.get_resources()
-    trainable_obj=Trainable(file_experiment)
-    trainable_func=trainable_obj.trainable
-    trainable_resources = tune.with_resources(trainable_func, resources)
+    trainable_func=Trainable(train_file_experiment)._trainable
     
-    ray.init(_system_config={"local_fs_capacity_threshold": 0.99,
-                             "object_spilling_config": json.dumps({"type": "filesystem",
-                                                                   "params": {"directory_path":[experiment.config['spill_dir']],}},)},)
+    test=ExperimentTest(env_for,
+              train_exp, 
+              raylog,
+              train_file_experiment,
+              trainable_func)
     
-    tuner = tune.Tuner(
-          trainable_resources,
-          param_space=config,
-          tune_config=config_tune,
-          run_config=config_run)
+    tester=test.get_tester(trainable_func)
     
-    results=tuner.fit()
+    def policy_mapping_fn(agent_id):
+        'Policy mapping function'
+        return 'pol_' + agent_id
+    
+    main_loop(1,env_for,tester,policy_mapping_fn)
 
-
-
-
-#%%
-# trainer=PPO(config)
-# trainer.train()
-# p1=trainer.get_policy('pol_p0')
-# p1.model.base_model.summary()
-
-#%%
-
-#%% run the environment with random actions
-
-# main_loop(env_for,game_count=1, render=True)
-
-#%%
-# obs=env_for.reset()
-# env_for.render()
-# # actions=env_for.action_space.sample()
-# actions={'p0':0,'p1':2}
-# actions={'p0':0}
-# print(actions)
-# obs2=env_for.step(actions)
-# env_for.render()
-# env_for.close()
-# # env.check_multiagent_environments(env_c)
-        
-        
 
