@@ -21,18 +21,17 @@ def _game_loop(environment, render,tester, pol_func):
     while not done:
         print('iter:',iteration)
         
-        actions={}
-        for ag in environment.agents_id:
-            if tester==[]:
-                actions[ag]=environment.action_space.sample()
-            else:
-                actions = {aid: tester.compute_single_action(obs[aid],
-                                                             policy_id=pol_func(aid)) for aid in environment.agents_id}
+        if tester==[]:
+            actions={}
+            for ag in environment.agents_id:
+                    actions[ag]=environment.action_space.sample()
+        else:
+            actions = {aid: tester.compute_single_action(obs[aid],policy_id=pol_func(aid)) for aid in environment.agents_id}
         
         # actions = environment.action_space.sample()
         # actions={'p0':actions}
         print('actions:', actions)
-        nobs, nreward, ndone, _ = environment.step(actions)
+        obs, nreward, ndone, _ = environment.step(actions)
         r=[]
         for key in nreward:
             r.append(nreward[key])
