@@ -25,8 +25,6 @@ from ray.rllib.algorithms.ppo import PPO #trainer
 from ray.rllib.algorithms.ppo import PPOConfig #config
 from ray.rllib.utils.pre_checks import env
 
-
-
 import os
 from os import path
 from pathlib import Path
@@ -60,18 +58,24 @@ train=YAMLParser().load_yaml(file_experiment)['train']
 if train:
     
     env_config=YAMLParser().load_yaml(train_env_config)
-    env_for=ForagingEnv_r(players=env_config['players'],
-                      max_player_level=env_config['max_player_level'],
-                      field_size=(env_config['field_size_x'],
-                                  env_config['field_size_y']),
-                      max_food=env_config['max_food'],
-                      sight=env_config['sight'],
-                      max_episode_steps=env_config['max_episode_steps'],
-                      force_coop=env_config['force_coop'],
-                      normalize_reward=env_config['normalize_reward'],
-                      grid_observation=env_config['grid_observation'],
-                      penalty=env_config['penalty'])
+    env_for = ForagingEnv_r(players=env_config['players'],
+                            field_size=(env_config['field_size_x'], env_config['field_size_y']),
+                            sight=env_config['sight'],
+                            max_episode_steps=env_config['max_episode_steps'],
+                            force_coop=env_config['force_coop'],
+                            normalize_reward=env_config['normalize_reward'],
+                            grid_observation=env_config['grid_observation'],
+                            penalty=env_config['penalty'],
+                            randomize=env_config['randomize'],
+                            network_cost=env_config['network_cost'],
+                            num_storage=env_config['num_storage'],
+                            num_network=env_config['num_network'],
+                            storage_level=env_config['storage_level'],
+                            network_level=env_config['network_level'],
+                            min_consumption=env_config['min_consumption'],                         
+                        )
 
+    #env_for.seed(int(time.time()))
 
     env_c=MultiAgentEnvCompatibility(env_for)
 

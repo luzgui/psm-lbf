@@ -68,32 +68,38 @@ test_file_experiment,_,test_env_config=configs_test.get_configs()
 
 #%%
 test=YAMLParser().load_yaml(test_file_experiment)['test']
-
+debug=YAMLParser().load_yaml(test_file_experiment)['debug']
 #%% Test
+
+    
+env_config=YAMLParser().load_yaml(test_env_config)
+env_for = ForagingEnv_r( players=env_config['players'],
+                        field_size=(env_config['field_size_x'], env_config['field_size_y']),
+                        sight=env_config['sight'],
+                        max_episode_steps=env_config['max_episode_steps'],
+                        force_coop=env_config['force_coop'],
+                        normalize_reward=env_config['normalize_reward'],
+                        grid_observation=env_config['grid_observation'],
+                        penalty=env_config['penalty'],
+                        randomize=env_config['randomize'],
+                        network_cost=env_config['network_cost'],
+                        num_storage=env_config['num_storage'],
+                        num_network=env_config['num_network'],
+                        storage_level=env_config['storage_level'],
+                        network_level=env_config['network_level'],
+                        min_consumption=env_config['min_consumption'],                       
+                    )
+
+env_c=MultiAgentEnvCompatibility(env_for)
+
+def env_creator(config):
+    # return NormalizeObs(menv_base)  # return an env instance
+    return MultiAgentEnvCompatibility(env_for)
+
+register_env("lb-for-mas", env_creator)
+
+#%%
 if test:
-    
-    env_config=YAMLParser().load_yaml(test_env_config)
-    env_for=ForagingEnv_r(players=env_config['players'],
-                      max_player_level=env_config['max_player_level'],
-                      field_size=(env_config['field_size_x'],
-                                  env_config['field_size_y']),
-                      max_food=env_config['max_food'],
-                      sight=env_config['sight'],
-                      max_episode_steps=env_config['max_episode_steps'],
-                      force_coop=env_config['force_coop'],
-                      normalize_reward=env_config['normalize_reward'],
-                      grid_observation=env_config['grid_observation'],
-                      penalty=env_config['penalty'])
-
-
-    env_c=MultiAgentEnvCompatibility(env_for)
-
-    def env_creator(config):
-        # return NormalizeObs(menv_base)  # return an env instance
-        return MultiAgentEnvCompatibility(env_for)
-
-    register_env("lb-for-mas", env_creator)
-    
     
     trainable_func=Trainable(train_file_experiment)._trainable
     
@@ -111,4 +117,6 @@ if test:
     
     main_loop(1,env_for,tester,policy_mapping_fn)
 
-
+#%%
+if debug:
+    main_loop(1,env_for,[],[])

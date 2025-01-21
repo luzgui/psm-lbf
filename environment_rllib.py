@@ -6,6 +6,7 @@ from itertools import product
 import gymnasium as gym
 from gymnasium.utils import seeding
 import numpy as np
+import time
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
 
@@ -38,6 +39,7 @@ class Player:
         self.reward = 0
         self.history = None
         self.current_step = None
+        self.load_capacity = 0
 
     def setup(self, position, level, field_size):
         self.history = []
@@ -59,7 +61,6 @@ class Player:
         else:
             return "Player"
 
-
 class ForagingEnv_r(MultiAgentEnv):
     """
     A class that contains rules/actions for the game level-based foraging.
@@ -75,106 +76,132 @@ class ForagingEnv_r(MultiAgentEnv):
     PlayerObservation = namedtuple(
         "PlayerObservation", ["position", "level", "history", "reward", "is_self"]
     )  # reward is available only if is_self
-
+    
     def __init__(
         self,
         players,
-        max_player_level,
         field_size,
-        max_food,
         sight,
         max_episode_steps,
         force_coop,
-        normalize_reward=True,
-        grid_observation=False,
-        penalty=0.0,
-    ):
+        normalize_reward,
+        grid_observation,
+        penalty,
+        randomize,
+        network_cost,
+        num_storage,
+        num_network,
+        storage_level,
+        network_level,
+        min_consumption,
+        ):
         
         super(MultiAgentEnv).__init__()
-        
+    
+        # Logging and random seed
         self.logger = logging.getLogger(__name__)
         self.seed()
+    
+        # Player and field setup
         self.players = [Player() for _ in range(players)]
-        self.agents_id=['p'+str(k) for k in range(players)]
-
-        self._agent_ids=self.agents_id
-        # self.Agent_ids=self.agents_id
-        
+        self.agents_id = ['p' + str(k) for k in range(players)]
+        self._agent_ids = self.agents_id
         self.field = np.zeros(field_size, np.int32)
-
-        self.penalty = penalty
-        
-        self.max_food = max_food
-        self._food_spawned = 0.0
-        self.max_player_level = max_player_level
+    
+        # General environment parameters
+        self.max_player_level = 0
         self.sight = sight
         self.force_coop = force_coop
+        self.penalty = penalty
         self._game_over = None
-
-        self._rendering_initialized = False
-        self._valid_actions = None
         self._max_episode_steps = max_episode_steps
-
         self._normalize_reward = normalize_reward
         self._grid_observation = grid_observation
-
-        # self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(6)] * len(self.players)))
-        
-        # self.observation_space = gym.spaces.Tuple(tuple([self._get_observation_space()] * len(self.players)))
-        
-        
+        self._valid_actions = None
+        self._rendering_initialized = False
+        self.randomize = randomize
+    
+        # Storage and Network fruit settings
+        self.storage_layer = np.zeros(field_size, np.int32)
+        self.network_layer = np.zeros(field_size, np.int32)
+        self.network_cost = network_cost
+        self.num_storage = num_storage
+        self.num_network = num_network
+        self.storage_level = storage_level
+        self.network_level = network_level
+        self.min_consumption = min_consumption
+    
+        # Action and observation spaces
         self.action_space = spaces.Discrete(6)
         self.observation_space = self._get_observation_space()
-
+    
+        # Player initialization
         self.viewer = None
-
         self.n_agents = len(self.players)
+    
+        # Spawn players and fruits
+        self.spawn_players(self.max_player_level, self.randomize)
+        self.spawn_resources(self.randomize)
+        
+        # Add this in ForagingEnv_r.__init__()
+        self.custom_metrics = {
+            "coop_penalty_applied": 0,
+            "storage_consumed": 0,
+            "network_consumed": 0
+        }
+
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
     def _get_observation_space(self):
-        """The Observation Space for each agent.
-        - all of the board (board_size^2) with foods
-        - player description (x, y, level)*player_count
-        """
-        if not self._grid_observation:
-            field_x = self.field.shape[1]
-            field_y = self.field.shape[0]
-            # field_size = field_x * field_y
-
-            max_food = self.max_food
-            max_food_level = self.max_player_level * len(self.players)
-
-            min_obs = [-1, -1, 0] * max_food + [-1, -1, 0] * len(self.players)
-            max_obs = [field_x-1, field_y-1, max_food_level] * max_food + [
-                field_x-1,
-                field_y-1,
-                self.max_player_level,
-            ] * len(self.players)
-        else:
-            # grid observation space
+    
+        if self._grid_observation: #if grid observation is true
             grid_shape = (1 + 2 * self.sight, 1 + 2 * self.sight)
-
-            # agents layer: agent levels
+    
+            # Layer for agent presence: values between 0 and max player level	
             agents_min = np.zeros(grid_shape, dtype=np.float32)
-            agents_max = np.ones(grid_shape, dtype=np.float32) * self.max_player_level
-
-            # foods layer: foods level
-            max_food_level = self.max_player_level * len(self.players)
-            foods_min = np.zeros(grid_shape, dtype=np.float32)
-            foods_max = np.ones(grid_shape, dtype=np.float32) * max_food_level
-
-            # access layer: i the cell available
+            agents_max = np.full(grid_shape, np.inf, dtype=np.float32)
+    
+            # Layer for storage fruits: values between 0 and storage level
+            storage_min = np.zeros(grid_shape, dtype=np.float32)
+            storage_max = np.ones(grid_shape, dtype=np.float32) * self.storage_level
+    
+            # Layer for network fruits: values between 0 and network level
+            network_min = np.zeros(grid_shape, dtype=np.float32)
+            network_max = np.ones(grid_shape, dtype=np.float32) * self.network_level
+    
+            # Layer for access (binary mask): 0 for blocked, 1 for accessible
             access_min = np.zeros(grid_shape, dtype=np.float32)
             access_max = np.ones(grid_shape, dtype=np.float32)
+    
+            # Stack all layers
+            min_obs = np.stack([agents_min, storage_min, network_min, access_min])
+            max_obs = np.stack([agents_max, storage_max, network_max, access_max])
+    
+        else:
+            # Flat observation: [agent info] + [storage fruit info] + [network fruit info]
+            field_x, field_y = self.field.shape
+    
+            # Agents: (x, y, level) per agent            
+            agents_min = [-1, -1, 0] * len(self.players)
+            agents_max = [field_x - 1, field_y - 1, np.inf] * len(self.players)
+    
+            # Storage fruits: (x, y, level) per storage      
+            storage_min = [-1, -1, 0] * self.num_storage
+            storage_max = [field_x - 1, field_y - 1, self.storage_level] * self.num_storage
+    
+            # Network fruits: (x, y, level) per network        
+            network_min = [-1, -1, 0] * self.num_network
+            network_max = [field_x - 1, field_y - 1, self.network_level] * self.num_network
+    
+            # Concatenate all layers for flat observation
+            min_obs = agents_min + storage_min + network_min
+            max_obs = agents_max + storage_max + network_max
+    
+        return gym.spaces.Box(low=np.array(min_obs), high=np.array(max_obs), dtype=np.float32)
 
-            # total layer
-            min_obs = np.stack([agents_min, foods_min, access_min])
-            max_obs = np.stack([agents_max, foods_max, access_max])
-
-        return gym.spaces.Box(np.array(min_obs), np.array(max_obs), dtype=np.float32)
 
     @classmethod
     def from_obs(cls, obs):
@@ -216,40 +243,68 @@ class ForagingEnv_r(MultiAgentEnv):
             ]
             for player in self.players
         }
-
+        
     def neighborhood(self, row, col, distance=1, ignore_diag=False):
+        # Combine storage, network, and field layers
+        combined_field = (
+            self.field
+            + self.storage_layer
+            + self.network_layer
+        )
+    
         if not ignore_diag:
-            return self.field[
-                max(row - distance, 0) : min(row + distance + 1, self.rows),
-                max(col - distance, 0) : min(col + distance + 1, self.cols),
+            # Include diagonals in the neighborhood
+            return combined_field[
+                max(row - distance, 0): min(row + distance + 1, self.rows),
+                max(col - distance, 0): min(col + distance + 1, self.cols)
             ]
-
+        
+        # Only include vertical and horizontal neighbors
         return (
-            self.field[
-                max(row - distance, 0) : min(row + distance + 1, self.rows), col
+            combined_field[
+                max(row - distance, 0): min(row + distance + 1, self.rows), col
             ].sum()
-            + self.field[
-                row, max(col - distance, 0) : min(col + distance + 1, self.cols)
+            + combined_field[
+                row, max(col - distance, 0): min(col + distance + 1, self.cols)
             ].sum()
         )
 
-    def adjacent_food(self, row, col):
-        return (
-            self.field[max(row - 1, 0), col]
-            + self.field[min(row + 1, self.rows - 1), col]
-            + self.field[row, max(col - 1, 0)]
-            + self.field[row, min(col + 1, self.cols - 1)]
-        )
 
-    def adjacent_food_location(self, row, col):
-        if row > 1 and self.field[row - 1, col] > 0:
+    def adjacent_resource(self, row, col):
+        return (
+        self.storage_layer[max(row - 1, 0), col] > 0 or  # Above
+        self.storage_layer[min(row + 1, self.rows - 1), col] > 0 or  # Below
+        self.storage_layer[row, max(col - 1, 0)] > 0 or  # Left
+        self.storage_layer[row, min(col + 1, self.cols - 1)] > 0 or  # Right
+        self.network_layer[max(row - 1, 0), col] > 0 or  # Above
+        self.network_layer[min(row + 1, self.rows - 1), col] > 0 or  # Below
+        self.network_layer[row, max(col - 1, 0)] > 0 or  # Left
+        self.network_layer[row, min(col + 1, self.cols - 1)] > 0  # Right
+        )
+        
+    def adjacent_resource_location(self, row, col):
+        # Check adjacent cells for Storage fruits
+        if row > 1 and self.storage_layer[row - 1, col] > 0:
+            return row - 1, col # Return the coordinates if resource is found above
+        elif row < self.rows - 1 and self.storage_layer[row + 1, col] > 0:
+            return row + 1, col # Return the coordinates if resource is found below
+        elif col > 1 and self.storage_layer[row, col - 1] > 0:
+            return row, col - 1 # Return the coordinates if food is resource to the left
+        elif col < self.cols - 1 and self.storage_layer[row, col + 1] > 0:
+            return row, col + 1  # Return the coordinates if resource is found to the right
+    
+    
+        # Check adjacent cells for Network fruits
+        if row > 1 and self.network_layer[row - 1, col] > 0:
             return row - 1, col
-        elif row < self.rows - 1 and self.field[row + 1, col] > 0:
+        elif row < self.rows - 1 and self.network_layer[row + 1, col] > 0:
             return row + 1, col
-        elif col > 1 and self.field[row, col - 1] > 0:
+        elif col > 1 and self.network_layer[row, col - 1] > 0:
             return row, col - 1
-        elif col < self.cols - 1 and self.field[row, col + 1] > 0:
+        elif col < self.cols - 1 and self.network_layer[row, col + 1] > 0:
             return row, col + 1
+    
+        return None  # No adjacent resource found
 
     def adjacent_players(self, row, col):
         return [
@@ -260,98 +315,93 @@ class ForagingEnv_r(MultiAgentEnv):
             or abs(player.position[1] - col) == 1
             and player.position[0] == row
         ]
-
-    def spawn_food(self, max_food, max_level):
-        food_count = 0
-        attempts = 0
-        min_level = max_level if self.force_coop else 1
-
-        while food_count < max_food and attempts < 1000:
-            attempts += 1
-            # row = self.np_random.randint(1, self.rows - 1)
-            # col = self.np_random.randint(1, self.cols - 1)
-            
-            row = np.random.randint(1, self.rows - 1)
-            col = np.random.randint(1, self.cols - 1)
-
-            # check if it has neighbors:
-            if (
-                self.neighborhood(row, col).sum() > 0
-                or self.neighborhood(row, col, distance=2, ignore_diag=True) > 0
-                or not self._is_empty_location(row, col)
-            ):
-                continue
-
-            self.field[row, col] = (
-                min_level
-                if min_level == max_level
-                # ! this is excluding food of level `max_level` but is kept for
-                # ! consistency with prior LBF versions
-                # else self.np_random.randint(min_level, max_level)
-                else np.random.randint(min_level, max_level)
-            )
-            food_count += 1
-        self._food_spawned = self.field.sum()
-
+    
+    def spawn_resources(self, randomize):
+        fixed_positions = [
+            (1, 1), (1, 4), (4, 1), (4, 4)  # Example positions maintaining distances
+        ]
+        self.storage_layer = np.zeros(self.field_size, np.int32)
+        self.network_layer = np.zeros(self.field_size, np.int32)
+        
+        storage_count = 0
+        network_count = 0
+    
+        for i, (row, col) in enumerate(fixed_positions):
+            if storage_count < self.num_storage:
+                level = self.storage_level
+                self.storage_layer[row, col] = level
+                
+                storage_count += 1
+            elif network_count < self.num_network:
+                level = self.network_level
+                self.network_layer[row, col] = level
+               
+                network_count += 1
+    
+            if (storage_count >= self.num_storage and
+                network_count >= self.num_network):   
+                break
+        
     def _is_empty_location(self, row, col):
-        if self.field[row, col] != 0:
-            return False
+        # Block cells with resources
+        if self.storage_layer[row, col] > 0 or self.network_layer[row, col] > 0:
+            return False  
+    
+        # Block cells with agents
         for a in self.players:
             if a.position and row == a.position[0] and col == a.position[1]:
                 return False
-
+    
         return True
 
-    def spawn_players(self, max_player_level):
+
+
+    def spawn_players(self, max_player_level, randomize):
         for player in self.players:
 
             attempts = 0
             player.reward = 0
 
             while attempts < 1000:
-                # row = self.np_random.randint(0, self.rows)
-                # col = self.np_random.randint(0, self.cols)
+                # row = np.random.randint(0, self.rows)
+                # col = np.random.randint(0, self.cols)
                 row = np.random.randint(0, self.rows)
                 col = np.random.randint(0, self.cols)
                 
                 if self._is_empty_location(row, col):
+                    agent_level = np.random.randint(0, max_player_level + 1) if randomize else max_player_level
                     player.setup(
                         (row, col),
-                        # self.np_random.randint(1, max_player_level + 1),
-                        np.random.randint(1, max_player_level + 1),
+                        agent_level,
                         self.field_size,
                     )
                     break
                 attempts += 1
 
     def _is_valid_action(self, player, action):
+        row, col = player.position
+    
         if action == Action.NONE:
             return True
+    
         elif action == Action.NORTH:
-            return (
-                player.position[0] > 0
-                and self.field[player.position[0] - 1, player.position[1]] == 0
-            )
+            return row > 0 and self._is_empty_location(row - 1, col)
+    
         elif action == Action.SOUTH:
-            return (
-                player.position[0] < self.rows - 1
-                and self.field[player.position[0] + 1, player.position[1]] == 0
-            )
+            return row < self.rows - 1 and self._is_empty_location(row + 1, col)
+    
         elif action == Action.WEST:
-            return (
-                player.position[1] > 0
-                and self.field[player.position[0], player.position[1] - 1] == 0
-            )
+            return col > 0 and self._is_empty_location(row, col - 1)
+    
         elif action == Action.EAST:
-            return (
-                player.position[1] < self.cols - 1
-                and self.field[player.position[0], player.position[1] + 1] == 0
-            )
+            return col < self.cols - 1 and self._is_empty_location(row, col + 1)
+    
         elif action == Action.LOAD:
-            return self.adjacent_food(*player.position) > 0
-
+            # Check only adjacent cells for Storage or Network resources
+            return self.adjacent_resource(row, col)
+        
         self.logger.error("Undefined action {} from {}".format(action, player.name))
-        raise ValueError("Undefined action")
+        raise ValueError("Undefined action")    
 
     def _transform_to_neighborhood(self, center, sight, position):
         return (
@@ -375,197 +425,201 @@ class ForagingEnv_r(MultiAgentEnv):
                     history=a.history,
                     reward=a.reward if a == player else None,
                 )
+                
                 for a in self.players
                 if (
                     min(
-                        self._transform_to_neighborhood(
+                        self._transform_to_neighborhood( # Get relative position of player 'a'
                             player.position, self.sight, a.position
                         )
                     )
-                    >= 0
+                    >= 0 # Check if they are within the visible area (non-negative)
                 )
                 and max(
                     self._transform_to_neighborhood(
                         player.position, self.sight, a.position
                     )
                 )
-                <= 2 * self.sight
+                <= 2 * self.sight # Ensure they are within the sight window
             ],
+            
             # todo also check max?
             field=np.copy(self.neighborhood(*player.position, self.sight)),
-            game_over=self.game_over,
-            sight=self.sight,
-            current_step=self.current_step,
+            game_over=self.game_over, # Whether the game has ended
+            sight=self.sight, # How far the player can see
+            current_step=self.current_step, # Current step in the episode
         )
 
     def _make_gym_obs(self):
         def make_obs_array(observation):
-            # obs = np.zeros(self.observation_space[0].shape, dtype=np.float32)
-            obs = np.zeros(self.observation_space.shape, dtype=np.float32)
-            # obs[: observation.field.size] = observation.field.flatten()
-            # self player is always first
-            seen_players = [p for p in observation.players if p.is_self] + [
-                p for p in observation.players if not p.is_self
-            ]
-
-            for i in range(self.max_food):
-                obs[3 * i] = -1
-                obs[3 * i + 1] = -1
-                obs[3 * i + 2] = 0
-
-            for i, (y, x) in enumerate(zip(*np.nonzero(observation.field))):
-                obs[3 * i] = y
-                obs[3 * i + 1] = x
-                obs[3 * i + 2] = observation.field[y, x]
-
-            for i in range(len(self.players)):
-                obs[self.max_food * 3 + 3 * i] = -1
-                obs[self.max_food * 3 + 3 * i + 1] = -1
-                obs[self.max_food * 3 + 3 * i + 2] = 0
-
-            for i, p in enumerate(seen_players):
-                obs[self.max_food * 3 + 3 * i] = p.position[0]
-                obs[self.max_food * 3 + 3 * i + 1] = p.position[1]
-                obs[self.max_food * 3 + 3 * i + 2] = p.level
-
+            # Initialize the observation array with zeros
+            obs_length = self.observation_space.shape[0]
+            obs = np.zeros(obs_length, dtype=np.float32)
+        
+            # Populate agent observations dynamically
+            for i, player in enumerate(self.players):
+                pos = player.position
+                level = player.level 
+                idx = i * 3
+                obs[idx] = pos[0]  # Row (x-coordinate)
+                obs[idx + 1] = pos[1]  # Column (y-coordinate)
+                obs[idx + 2] = level  # Actual agent level
+        
+            # Populate storage fruit observations
+            offset = len(self.players) * 3  # Offset for storage data
+            for i, (x, y) in enumerate(zip(*np.where(self.storage_layer > 0))):
+                idx = offset + i * 3
+                obs[idx] = x  # Row
+                obs[idx + 1] = y  # Column
+                obs[idx + 2] = self.storage_layer[x, y]  # Storage level
+        
+            # Populate network fruit observations
+            offset += self.num_storage * 3  # Offset for network data
+            for i, (x, y) in enumerate(zip(*np.where(self.network_layer > 0))):
+                idx = offset + i * 3
+                obs[idx] = x  # Row
+                obs[idx + 1] = y  # Column
+                obs[idx + 2] = self.network_layer[x, y]  # Network level
+        
             return obs
 
+    
         def make_global_grid_arrays():
-            """
-            Create global arrays for grid observation space
-            """
             grid_shape_x, grid_shape_y = self.field_size
             grid_shape_x += 2 * self.sight
             grid_shape_y += 2 * self.sight
             grid_shape = (grid_shape_x, grid_shape_y)
-
+    
             agents_layer = np.zeros(grid_shape, dtype=np.float32)
             for player in self.players:
                 player_x, player_y = player.position
                 agents_layer[player_x + self.sight, player_y + self.sight] = player.level
-            
-            foods_layer = np.zeros(grid_shape, dtype=np.float32)
-            foods_layer[self.sight:-self.sight, self.sight:-self.sight] = self.field.copy()
-
+    
+            storage_layer = np.zeros(grid_shape, dtype=np.float32)
+            for x, y in zip(*np.where(self.storage_layer > 0)):
+                storage_layer[x + self.sight, y + self.sight] = self.storage_layer[x, y]
+    
+            network_layer = np.zeros(grid_shape, dtype=np.float32)
+            for x, y in zip(*np.where(self.network_layer > 0)):
+                network_layer[x + self.sight, y + self.sight] = self.network_layer[x, y]
+    
             access_layer = np.ones(grid_shape, dtype=np.float32)
-            # out of bounds not accessible
             access_layer[:self.sight, :] = 0.0
             access_layer[-self.sight:, :] = 0.0
             access_layer[:, :self.sight] = 0.0
             access_layer[:, -self.sight:] = 0.0
-            # agent locations are not accessible
+            
             for player in self.players:
                 player_x, player_y = player.position
                 access_layer[player_x + self.sight, player_y + self.sight] = 0.0
-            # food locations are not accessible
-            foods_x, foods_y = self.field.nonzero()
-            for x, y in zip(foods_x, foods_y):
+                
+            # Block cells occupied by storage resources
+            for x, y in zip(*np.where(self.storage_layer > 0)):
+                access_layer[x + self.sight, y + self.sight] = 0.0
+    
+            # Block cells occupied by network resources
+            for x, y in zip(*np.where(self.network_layer > 0)):
                 access_layer[x + self.sight, y + self.sight] = 0.0
             
-            return np.stack([agents_layer, foods_layer, access_layer])
-
+            return np.stack([agents_layer, storage_layer, network_layer, access_layer])
+    
         def get_agent_grid_bounds(agent_x, agent_y):
             return agent_x, agent_x + 2 * self.sight + 1, agent_y, agent_y + 2 * self.sight + 1
-        
+    
         def get_player_reward(observation):
             for p in observation.players:
                 if p.is_self:
                     return p.reward
-
+        
+        # Generate observations for all players
         observations = [self._make_obs(player) for player in self.players]
+        
+        # Handle observations differently depending on the observation type
         if self._grid_observation:
+            # Generate global grid layers for all agents
             layers = make_global_grid_arrays()
-            agents_bounds = [get_agent_grid_bounds(*player.position) for player in self.players]
-            nobs = tuple([layers[:, start_x:end_x, start_y:end_y] for start_x, end_x, start_y, end_y in agents_bounds])
-        else:
-            nobs = tuple([make_obs_array(obs) for obs in observations])
-        nreward = [get_player_reward(obs) for obs in observations]
-        ndone = [obs.game_over for obs in observations]
-        # ninfo = [{'observation': obs} for obs in observations]
-        ninfo = {}
-        
-        # # check the space of obs
-        # for i, obs in  enumerate(nobs):
-        #     assert self.observation_space[i].contains(obs), \
-        #         f"obs space error: obs: {obs}, obs_space: {self.observation_space[i]}"
-                
-        # check the space of obs
-        for i, obs in  enumerate(nobs):
-            assert self.observation_space.contains(obs), \
-                f"obs space error: obs: {obs}, obs_space: {self.observation_space[i]}"
-                
-        
-        # print('nobs', nobs)
-        # print('nrewards',nreward)
-        # print('ndone',ndone)
-        # print('ninfo',ninfo)
-        
-        nobs_mas={self.agents_id[k]:nobs[k] for k in range(len(self.agents_id))}
-        nreward_mas={self.agents_id[k]:nreward[k] for k in range(len(self.agents_id))}
-        ndone_mas={self.agents_id[k]:ndone[k] for k in range(len(self.agents_id))}
-        # ninfo_mas={self.agents_id[k]:ninfo[k] for k in range(len(self.agents_id))}
-        
-        #introduce _all_
-        if all(ndone_mas.values()):
-            ndone_mas['__all__']=True
-        else:
-            ndone_mas['__all__']=False
             
+            # Get grid bounds for each player based on their position
+            agents_bounds = [get_agent_grid_bounds(p.position[0], p.position[1]) for p in self.players]
+            
+            # Slice the global grid to match each player's field of view
+            nobs = [layers[:, sx:ex, sy:ey] for sx, ex, sy, ey in agents_bounds]
+        else:
+            # Use flat observation format if grid observation is disabled
+            nobs = [make_obs_array(obs) for obs in observations]
+        
+        # Extract rewards for each player from their observations
+        nreward = [get_player_reward(obs) for obs in observations]
+        
+        # Check if the game is over for each player
+        ndone = [obs.game_over for obs in observations]
+        
+        # Organize observations, rewards, and done flags into dictionaries
+        nobs_dict = {self.agents_id[k]: nobs[k] for k in range(len(self.agents_id))}
+        nreward_dict = {self.agents_id[k]: nreward[k] for k in range(len(self.agents_id))}
+        ndone_dict = {self.agents_id[k]: ndone[k] for k in range(len(self.agents_id))}
+        
+        # Determine if all agents are done
+        ndone_dict['__all__'] = all(ndone_dict.values())
         
         
-        # print('cd',nobs_mas)
-        # print('cd',nreward_mas)
-        # print('cd',ndone_mas)
-        # print('cd',ninfo_mas)
+        # Validate that all observations are within the allowed observation space
+        for agent_id, obs in nobs_dict.items():
+            assert self.observation_space.contains(obs), \
+                f"obs space error for {agent_id}: obs: {obs}, obs_space: {self.observation_space}"
         
-        # return nobs, nreward, ndone, ninfo
-        return nobs_mas, nreward_mas, ndone_mas, ninfo
+        # Return observations, rewards, done flags, and an empty info dictionary
+        return nobs_dict, nreward_dict, ndone_dict, {}
+
 
     def reset(self):
-        self.field = np.zeros(self.field_size, np.int32)
-        self.spawn_players(self.max_player_level)
-        player_levels = sorted([player.level for player in self.players])
-
-        self.spawn_food(
-            self.max_food, max_level=sum(player_levels[:3])
-        )
-        self.current_step = 0
-        self._game_over = False
-        self._gen_valid_moves()
-
+        
+        self.field = np.zeros(self.field_size, np.int32)  # Reset the grid
+        self.spawn_players(self.max_player_level, self.randomize)  # Reset player positions
+    
+        # Spawn fruits (Storage and Network)
+        self.spawn_resources(self.randomize)
+    
+        self.current_step = 0  # Reset step counter
+        self._game_over = False  # Reset game-over flag
+        self._gen_valid_moves()  # Update valid moves
+        
+        for player in self.players:
+            player.starting_level = player.level  # Track initial level
+    
+        # Generate and return initial observations
         nobs, _, _, _ = self._make_gym_obs()
         return nobs
 
     def step(self, actions):
-        actions=tuple(actions.values()) #extract againf the actions to tuple
-        
+        actions = tuple(actions.values())  
         self.current_step += 1
-
-        for p in self.players:
-            p.reward = 0
-
+    
+        # Reset player rewards
+        for player in self.players:
+            player.reward = 0
+        
+        # Validate actions
         actions = [
-            Action(a) if Action(a) in self._valid_actions[p] else Action.NONE
-            for p, a in zip(self.players, actions)
+            Action(action) if Action(action) in self._valid_actions[player] else Action.NONE
+            for player, action in zip(self.players, actions)
         ]
-
-        # check if actions are valid
+    
+        # Validate actions before applying them
         for i, (player, action) in enumerate(zip(self.players, actions)):
             if action not in self._valid_actions[player]:
                 self.logger.info(
-                    "{}{} attempted invalid action {}.".format(
-                        player.name, player.position, action
-                    )
+                    f"{player.name} at {player.position} attempted invalid action {action}."
                 )
-                actions[i] = Action.NONE
-
-        loading_players = set()
-
-        # move players
-        # if two or more players try to move to the same location they all fail
+                actions[i] = Action.NONE  # Replace invalid action with NONE
+        
+                
+        loading_players = set()  
         collisions = defaultdict(list)
-
-        # so check for collisions
+        
+    
+    
+        # Determine target positions for each action
         for player, action in zip(self.players, actions):
             if action == Action.NONE:
                 collisions[player.position].append(player)
@@ -580,62 +634,129 @@ class ForagingEnv_r(MultiAgentEnv):
             elif action == Action.LOAD:
                 collisions[player.position].append(player)
                 loading_players.add(player)
-
-        # and do movements for non colliding players
-
-        for k, v in collisions.items():
-            if len(v) > 1:  # make sure no more than an player will arrive at location
-                continue
-            v[0].position = k
-
-        # finally process the loadings:
+    
+        # Handle collisions and move non-colliding players
+        for position, players in collisions.items():
+            if len(players) > 1:
+                continue  # Multiple players cannot move to the same position
+            row, col = position
+            
+            players[0].position = position  # Move the player
+    
+    
+        # Handle loading actions
         while loading_players:
-            # find adjacent food
             player = loading_players.pop()
-            frow, fcol = self.adjacent_food_location(*player.position)
-            food = self.field[frow, fcol]
+            row, col = player.position
+            
+            # Find the exact adjacent resource location
+            resource_pos = self.adjacent_resource_location(row, col)
+        
+            if resource_pos:
+                r_row, r_col = resource_pos
+                player.load_capacity = max(self.min_consumption - player.level, 0)
+                
+                if self.storage_layer[r_row, r_col] > 0:
+                    if self.force_coop:
+                        adjacent_players = self.adjacent_players(r_row, r_col)
+                        total_players = adjacent_players   # Include the current player
+                    
+                        required_players = 2  # Minimum players required for cooperation
+                    
+                        if len(total_players) >= required_players:
+                            # Calculate each player's remaining capacity
+                            total_capacity = sum(max(self.min_consumption - p.level, 0) for p in total_players)
+                    
+                            if total_capacity > 0:
+                                total_resource = self.storage_layer[r_row, r_col]
+                    
+                                # Distribute resources without prematurely clearing them
+                                distributed_total = 0
+                    
+                                            
+                    
+                                for p in total_players:
+                                    #import pdb
+                                    #pdb.set_trace()
+                                    remaining_capacity = max(self.min_consumption - p.level, 0)
+                                    proportion = remaining_capacity / total_capacity
+                                    amount_collected = min(round(total_resource * proportion), remaining_capacity)
+                    
+                                    p.level += amount_collected
+                                    p.reward += amount_collected
+                                    distributed_total += amount_collected
+                    
+                                # Deduct the actual distributed amount from the resource
+                                self.storage_layer[r_row, r_col] -= distributed_total
 
-            adj_players = self.adjacent_players(frow, fcol)
-            adj_players = [
-                p for p in adj_players if p in loading_players or p is player
-            ]
-
-            adj_player_level = sum([a.level for a in adj_players])
-
-            loading_players = loading_players - set(adj_players)
-
-            if adj_player_level < food:
-                # failed to load
-                for a in adj_players:
-                    a.reward -= self.penalty
-                continue
-
-            # else the food was loaded and each player scores points
-            for a in adj_players:
-                a.reward = float(a.level * food)
-                if self._normalize_reward:
-                    a.reward = a.reward / float(
-                        adj_player_level * self._food_spawned
-                    )  # normalize reward
-            # and the food is removed
-            self.field[frow, fcol] = 0
-
+                                    
+                            else:
+                                # Apply penalty for not loading cooperatively
+                                for p in total_players:
+                                    p.reward -= self.penalty
+                                
+                        else:
+                            # Apply penalty if not enough players are cooperating
+                            for p in total_players:
+                                p.reward -= self.penalty
+                            
+                        
+                    else:
+                        amount = min(self.storage_layer[r_row, r_col], player.load_capacity)
+                        self.storage_layer[r_row, r_col] -= amount
+                        player.level += amount
+                        reward = amount
+                        player.reward += reward              
+                
+                elif self.network_layer[r_row, r_col] > 0:
+                    amount = min(self.network_layer[r_row, r_col], player.load_capacity)
+                    self.network_layer[r_row, r_col] -= amount
+                    player.level += amount
+                    reward = amount - (self.network_cost * amount)
+                    player.reward += reward              
+                    
+             
+    
+        # Check if all players reached the min_consumption
+        all_met_min_consumption = all(player.level >= self.min_consumption for player in self.players)
+        
+        # Update game-over condition
         self._game_over = (
-            self.field.sum() == 0 or self._max_episode_steps <= self.current_step
+            self.storage_layer.sum() + self.network_layer.sum() == 0  
+            or self.current_step >= self._max_episode_steps           
+            or all_met_min_consumption                              
         )
+        
+        if self._game_over:
+            for player in self.players:
+                # Apply penalty if player didn't meet the minimum consumption
+                if player.level < self.min_consumption:
+                    # Penalty scaled
+                    penalty = self.penalty * ((self.min_consumption - player.level) / self.min_consumption)
+                    player.reward -= penalty
+                    
+                    
+
         self._gen_valid_moves()
+    
+        # Update player rewards
+        for player in self.players:
+            
+            if self._normalize_reward:
+                player.reward /= (self.min_consumption * len(self.players))
 
-        for p in self.players:
-            p.score += p.reward
-
+            player.score += player.reward  
+            
+            print('total score:', player.score)
+        
         return self._make_gym_obs()
 
     def _init_render(self):
-        from lbforaging.foraging.rendering import Viewer
+        from rendering import Viewer
 
         self.viewer = Viewer((self.rows, self.cols))
         self._rendering_initialized = True
-
+        
     def render(self, mode="human"):
         if not self._rendering_initialized:
             self._init_render()

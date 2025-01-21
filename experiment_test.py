@@ -131,38 +131,59 @@ class ExperimentTest():
     
     
     def get_tester(self, trainable):
+        experiment_path = os.path.join(self.dir, self.exp_name)
+    
+        # Check if the experiment path exists
+        if not os.path.exists(experiment_path):
+            raise FileNotFoundError(f"Experiment path '{experiment_path}' does not exist. Ensure training has been run first.")
 
-        experiment_path=os.path.join(self.dir, self.exp_name)
-        # import pdb
-        # pdb.pdb.set_trace()
-        
-        spill_1=raylog / 'spill1'
-        spill_2=raylog / 'spill2'
+        # Set up spilling directories
+        spill_1 = raylog / 'spill1'
+        spill_2 = raylog / 'spill2'
 
-        ray.init(_system_config={"local_fs_capacity_threshold": 0.99,
-                                 "object_spilling_config": json.dumps({"type": "filesystem",
-                                                                       "params": {"directory_path":[spill_1.as_posix(),
-                                                                                                    spill_2.as_posix()],}},)},)
-        
-        restored_tuner = tune.Tuner.restore(experiment_path,trainable=self.trainable)
-        # restored_tuner = tune.Tuner.restore(experiment_path,trainable=trainable, resume_unfinished=True)
+        # Initialize Ray with custom configuration
+        ray.init(_system_config={
+            "local_fs_capacity_threshold": 0.99,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {"directory_path": [spill_1.as_posix(), spill_2.as_posix()]}
+            })
+            })
+
+        try:
+        # Restore the tuner
+                restored_tuner = tune.Tuner.restore(experiment_path, trainable=self.trainable)
+        except Exception as e:
+            raise RuntimeError(f"Failed to restore tuner from path '{experiment_path}'. Error: {str(e)}")
+    
+        # Ensure the results grid is valid
         result_grid = restored_tuner.get_results()
-        best_res=result_grid.get_best_result()
-        config=best_res.config
-        
-        utilities.print_info('num_workers changed sue to resource scarcicity')
-        config['num_workers']=1
-        config['num_gpus']=0
-        config['num_gpus_per_worker']=0
-        checkpoint=best_res.checkpoint
-        tester=self.tester(config, env=config["env"])
+        if not result_grid or not result_grid.get_best_result():
+            raise ValueError("No results found. Ensure Tuner.fit() has been run and results are saved.")
+
+        # Get the best result and its configuration
+        best_res = result_grid.get_best_result()
+        config = best_res.config
+
+        # Log adjustments for resource constraints
+        utilities.print_info('num_workers changed due to resource scarcity')
+        config['num_workers'] = 1
+        config['num_gpus'] = 0
+        config['num_gpus_per_worker'] = 0
+
+        # Restore the tester from checkpoint
+        checkpoint = best_res.checkpoint
+        tester = self.tester(config, env=config["env"])
         tester.restore(checkpoint)
-        print('restored the following checkpoint',checkpoint)
         
- 
-        # print(self.config['mode'],checkpoint)
-        
+        # Render the environment after restoring the model
+        self.env.render()
+        time.sleep(1)  # Optional pause for rendering visibility
+
+        print('Restored the following checkpoint:', checkpoint)
+
         return tester
+
 
     
 
@@ -208,19 +229,21 @@ class SimpleTests:
     
         
     def episode_test(self):
-        
-        obs=self.env.reset()
-        action_plan=self.get_action_plan()
-        actions={}
-        
+        obs = self.env.reset()
+        action_plan = self.get_action_plan()
+        actions = {}
+    
         for i in range(self.env.Tw):
-            actions = {aid: action_plan[aid][i] for aid in self.env.agents_id}  
-            print('iteration', i)
+            actions = {aid: action_plan[aid][i] for aid in self.env.agents_id}
+            print('Iteration:', i)
             obs, reward, done, info = self.env.step(actions)
-        
-            
-        
+    
+            # Add rendering after each step
+            self.env.render()
+            time.sleep(0.5)  # Pause for smoother rendering
+    
         return self.env
+
 
 
 
