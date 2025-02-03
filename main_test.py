@@ -73,7 +73,7 @@ debug=YAMLParser().load_yaml(test_file_experiment)['debug']
 
     
 env_config=YAMLParser().load_yaml(test_env_config)
-env_for = ForagingEnv_r( players=env_config['players'],
+env_for = ForagingEnv_r(players=env_config['players'],
                         field_size=(env_config['field_size_x'], env_config['field_size_y']),
                         sight=env_config['sight'],
                         max_episode_steps=env_config['max_episode_steps'],
@@ -81,13 +81,16 @@ env_for = ForagingEnv_r( players=env_config['players'],
                         normalize_reward=env_config['normalize_reward'],
                         grid_observation=env_config['grid_observation'],
                         penalty=env_config['penalty'],
+                        spawn_resources_random=env_config['spawn_resources_random'],
+                        change_to_random = env_config['change_to_random'],
+                        change_number = env_config['change_number'],
                         randomize=env_config['randomize'],
                         network_cost=env_config['network_cost'],
                         num_storage=env_config['num_storage'],
                         num_network=env_config['num_network'],
                         storage_level=env_config['storage_level'],
                         network_level=env_config['network_level'],
-                        min_consumption=env_config['min_consumption'],                       
+                        min_consumption=env_config['min_consumption'],                           
                     )
 
 env_c=MultiAgentEnvCompatibility(env_for)
@@ -108,8 +111,9 @@ if test:
               raylog,
               train_file_experiment,
               trainable_func)
-    
+        
     tester=test.get_tester(trainable_func)
+    
     
     def policy_mapping_fn(agent_id):
         'Policy mapping function'

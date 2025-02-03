@@ -1,0 +1,45 @@
+# experiment config
+exp_name: exp15
+train: True
+test: True
+debug: False
+
+pol_type: agent_pol #shared_pol shared policy or each agent will have its own policy
+
+algorithm:
+  name: PPO
+  #name: CentralizedCritic
+  config: 'ppo_config.yaml'
+environment_cls: 'ForagingEnv_r'
+
+#tune config
+mode: max
+metric: episode_reward_mean
+
+# Run config
+verbose: 0
+
+#trainable config
+n_iters: 4001
+checkpoint_freq: 100
+
+#resources
+#num_cpu: 25.0
+num_cpu_1: 2.0
+num_cpu_2: 4.0
+num_gpu: 0
+cpu_factor: 3
+
+spill_dir: '/media/guiluz/data'
+
+#resources
+# b={'CPU':3,'GPU':0.1}
+# resources=tune.PlacementGroupFactory([b]*10)
+# config.num_rollout_workers=10
+
+# CPU: 1.0}] + [{'CPU': 1.0}] * 6)
+
+#resources FCUL
+# b={'CPU':3,'GPU':0.1}
+# resources=tune.PlacementGroupFactory([b]*10)
+# config.num_rollout_workers=10

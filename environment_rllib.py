@@ -87,7 +87,10 @@ class ForagingEnv_r(MultiAgentEnv):
         normalize_reward,
         grid_observation,
         penalty,
+        spawn_resources_random,
         randomize,
+        change_to_random,
+        change_number,
         network_cost,
         num_storage,
         num_network,
@@ -120,8 +123,12 @@ class ForagingEnv_r(MultiAgentEnv):
         self._valid_actions = None
         self._rendering_initialized = False
         self.randomize = randomize
+        self.current_iter = 0  # 
     
         # Storage and Network fruit settings
+        self.spawn_resources_random = spawn_resources_random
+        self.change_to_random = change_to_random
+        self.change_number = change_number
         self.storage_layer = np.zeros(field_size, np.int32)
         self.network_layer = np.zeros(field_size, np.int32)
         self.network_cost = network_cost
@@ -317,31 +324,136 @@ class ForagingEnv_r(MultiAgentEnv):
         ]
     
     def spawn_resources(self, randomize):
-        fixed_positions = [
-            (1, 1), (1, 4), (4, 1), (4, 4)  # Example positions maintaining distances
-        ]
-        self.storage_layer = np.zeros(self.field_size, np.int32)
-        self.network_layer = np.zeros(self.field_size, np.int32)
         
-        storage_count = 0
-        network_count = 0
+        if self.change_to_random:  # Check if switching to random mode is enabled
+            if self.current_iter <= self.change_number:  # Predefined placement
+                fixed_positions = [(1, 1), (1, 4), (4, 1), (4, 4)]
+                self.storage_layer = np.zeros(self.field.shape, np.int32)
+                self.network_layer = np.zeros(self.field.shape, np.int32)
     
-        for i, (row, col) in enumerate(fixed_positions):
-            if storage_count < self.num_storage:
-                level = self.storage_level
-                self.storage_layer[row, col] = level
-                
-                storage_count += 1
-            elif network_count < self.num_network:
-                level = self.network_level
-                self.network_layer[row, col] = level
-               
-                network_count += 1
+                storage_count = 0
+                network_count = 0
     
-            if (storage_count >= self.num_storage and
-                network_count >= self.num_network):   
-                break
-        
+                for i, (row, col) in enumerate(fixed_positions):
+                    if storage_count < self.num_storage:
+                        level = self.storage_level
+                        self.storage_layer[row, col] = level
+                        storage_count += 1
+                    elif network_count < self.num_network:
+                        level = self.network_level
+                        self.network_layer[row, col] = level
+                        network_count += 1
+    
+                    if storage_count >= self.num_storage and network_count >= self.num_network:
+                        break
+            else:  # Switch to random placement after `change_number` iterations
+                while True:
+                    self.storage_layer = np.zeros(self.field.shape, np.int32)
+                    self.network_layer = np.zeros(self.field.shape, np.int32)
+    
+                    total_required_resources = self.min_consumption * len(self.players)
+                    total_spawned_resources = 0
+                    storage_count = 0
+                    network_count = 0
+                    attempts = 0
+    
+                    while (total_spawned_resources < total_required_resources or
+                           storage_count < self.num_storage or
+                           network_count < self.num_network) and attempts < 2000:
+    
+                        attempts += 1
+                        row, col = np.random.randint(1, self.field.shape[0] - 1), np.random.randint(1, self.field.shape[1] - 1)
+    
+                        if (
+                            np.sum(self.storage_layer[max(0, row - 1):row + 2, max(0, col - 1):col + 2]) == 0 and
+                            np.sum(self.network_layer[max(0, row - 1):row + 2, max(0, col - 1):col + 2]) == 0 and
+                            self._is_empty_location(row, col)
+                        ):
+                            if storage_count < self.num_storage:
+                                level = np.random.randint(1, self.storage_level + 1) if randomize else self.storage_level
+                                self.storage_layer[row, col] = level
+                                total_spawned_resources += level
+                                storage_count += 1
+                                continue
+    
+                            if network_count < self.num_network:
+                                level = np.random.randint(1, self.network_level + 1) if randomize else self.network_level
+                                self.network_layer[row, col] = level
+                                total_spawned_resources += level
+                                network_count += 1
+    
+                    if attempts >= 2000:
+                        print("Warning: Max attempts reached. Resources may be insufficient.")
+    
+                    if (total_spawned_resources >= total_required_resources and
+                            storage_count >= self.num_storage and
+                            network_count >= self.num_network):
+                        break
+        else:  # Original logic remains as it is
+            if self.spawn_resources_random:  # Randomized resource spawning
+                while True:
+                    self.storage_layer = np.zeros(self.field.shape, np.int32)
+                    self.network_layer = np.zeros(self.field.shape, np.int32)
+    
+                    total_required_resources = self.min_consumption * len(self.players)
+                    total_spawned_resources = 0
+                    storage_count = 0
+                    network_count = 0
+                    attempts = 0
+    
+                    while (total_spawned_resources < total_required_resources or
+                           storage_count < self.num_storage or
+                           network_count < self.num_network) and attempts < 2000:
+    
+                        attempts += 1
+                        row, col = np.random.randint(1, self.field.shape[0] - 1), np.random.randint(1, self.field.shape[1] - 1)
+    
+                        if (
+                            np.sum(self.storage_layer[max(0, row - 1):row + 2, max(0, col - 1):col + 2]) == 0 and
+                            np.sum(self.network_layer[max(0, row - 1):row + 2, max(0, col - 1):col + 2]) == 0 and
+                            self._is_empty_location(row, col)
+                        ):
+                            if storage_count < self.num_storage:
+                                level = np.random.randint(1, self.storage_level + 1) if randomize else self.storage_level
+                                self.storage_layer[row, col] = level
+                                total_spawned_resources += level
+                                storage_count += 1
+                                continue
+    
+                            if network_count < self.num_network:
+                                level = np.random.randint(1, self.network_level + 1) if randomize else self.network_level
+                                self.network_layer[row, col] = level
+                                total_spawned_resources += level
+                                network_count += 1
+    
+                    if attempts >= 2000:
+                        print("Warning: Max attempts reached. Resources may be insufficient.")
+    
+                    if (total_spawned_resources >= total_required_resources and
+                            storage_count >= self.num_storage and
+                            network_count >= self.num_network):
+                        break
+            else:  # Fixed position spawning
+                fixed_positions = [(1, 1), (1, 4), (4, 1), (4, 4)]
+                self.storage_layer = np.zeros(self.field.shape, np.int32)
+                self.network_layer = np.zeros(self.field.shape, np.int32)
+    
+                storage_count = 0
+                network_count = 0
+    
+                for i, (row, col) in enumerate(fixed_positions):
+                    if storage_count < self.num_storage:
+                        level = self.storage_level
+                        self.storage_layer[row, col] = level
+                        storage_count += 1
+                    elif network_count < self.num_network:
+                        level = self.network_level
+                        self.network_layer[row, col] = level
+                        network_count += 1
+    
+                    if storage_count >= self.num_storage and network_count >= self.num_network:
+                        break
+              
     def _is_empty_location(self, row, col):
         # Block cells with resources
         if self.storage_layer[row, col] > 0 or self.network_layer[row, col] > 0:
@@ -575,10 +687,15 @@ class ForagingEnv_r(MultiAgentEnv):
     def reset(self):
         
         self.field = np.zeros(self.field_size, np.int32)  # Reset the grid
-        self.spawn_players(self.max_player_level, self.randomize)  # Reset player positions
-    
+        # Reset player positions
+        
+        self.current_iter += 1 # Add iteration for Curriculum training
+        print('current iter:', self.current_iter)
+        
         # Spawn fruits (Storage and Network)
         self.spawn_resources(self.randomize)
+    
+        self.spawn_players(self.max_player_level, self.randomize)
     
         self.current_step = 0  # Reset step counter
         self._game_over = False  # Reset game-over flag
@@ -594,6 +711,7 @@ class ForagingEnv_r(MultiAgentEnv):
     def step(self, actions):
         actions = tuple(actions.values())  
         self.current_step += 1
+        
     
         # Reset player rewards
         for player in self.players:
@@ -732,7 +850,7 @@ class ForagingEnv_r(MultiAgentEnv):
                 # Apply penalty if player didn't meet the minimum consumption
                 if player.level < self.min_consumption:
                     # Penalty scaled
-                    penalty = self.penalty * ((self.min_consumption - player.level) / self.min_consumption)
+                    penalty = self.penalty 
                     player.reward -= penalty
                     
                     
@@ -747,7 +865,7 @@ class ForagingEnv_r(MultiAgentEnv):
 
             player.score += player.reward  
             
-            print('total score:', player.score)
+            #print('total score:', player.score)
         
         return self._make_gym_obs()
 

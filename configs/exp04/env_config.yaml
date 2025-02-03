@@ -1,8 +1,8 @@
 # Environment configuration
 players: 2  # Number of agents (players) in the environment
 max_player_level: 0 # Player initial level
-field_size_x: 6  # Width of the grid
-field_size_y: 6  # Height of the grid
+field_size_x: 8  # Width of the grid
+field_size_y: 8  # Height of the grid
 sight: 3 # Visibility range for agents on the grid
 max_episode_steps: 100 # Maximum number of steps per episode before termination
 force_coop: true # Whether cooperation is enforced
@@ -10,8 +10,13 @@ normalize_reward: true # Whether rewards should be normalized
 grid_observation: false # Use grid-based observation or flat observation
 penalty: 10 # Penalty for not achieving mininum consumption
 
-# New parameters for Storage and Network
+# Env randomness:
+spawn_resources_random: False
 randomize: false #if true, player and resource levels are random until the max
+change_to_random: false #if true, resource spawn changes in the midle of train
+change_number: 2000 #number to start swapning randomly
+
+# Storage and Network:
 network_cost: 0.5 #Penalty multiplier for consuming Network fruits
 num_storage: 1 # Total number of Storage fruits on the grid
 num_network: 2 # Total number of Network fruits on the grid

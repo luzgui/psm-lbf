@@ -20,8 +20,8 @@ metric: episode_reward_mean
 verbose: 0
 
 #trainable config
-n_iters: 3001
-checkpoint_freq: 100 	
+n_iters: 4001
+checkpoint_freq: 100 
 
 #resources
 #num_cpu: 25.0
