@@ -849,7 +849,7 @@ class ForagingEnv_r(MultiAgentEnv):
             for player in self.players:
                 # Apply penalty if player didn't meet the minimum consumption
                 if player.level < self.min_consumption:
-                    # Penalty scaled
+                    
                     penalty = self.penalty 
                     player.reward -= penalty
                     
@@ -865,7 +865,7 @@ class ForagingEnv_r(MultiAgentEnv):
 
             player.score += player.reward  
             
-            #print('total score:', player.score)
+            print('total score:', player.score)
         
         return self._make_gym_obs()
 

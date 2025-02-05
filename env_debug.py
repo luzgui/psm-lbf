@@ -10,7 +10,7 @@ def _game_loop(environment, render, tester, pol_func):
 
     if render:
         environment.render()
-        time.sleep(0.5)
+        time.sleep(0.01)
 
     while not done:
         print(f'Iteration: {iteration}')

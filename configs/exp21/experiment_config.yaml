@@ -1,5 +1,5 @@
 # experiment config
-exp_name: exp20
+exp_name: exp21
 train: True
 test: True
 debug: False
@@ -20,7 +20,7 @@ metric: episode_reward_mean
 verbose: 0
 
 #trainable config
-n_iters: 4001
+n_iters: 8001
 checkpoint_freq: 100
 
 #resources

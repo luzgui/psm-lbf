@@ -8,7 +8,7 @@ max_episode_steps: 100 # Maximum number of steps per episode before termination
 force_coop: true # Whether cooperation is enforced
 normalize_reward: true # Whether rewards should be normalized
 grid_observation: false # Use grid-based observation or flat observation
-penalty: 20 # Penalty for not achieving mininum consumption
+penalty: 10 # Penalty for not achieving mininum consumption
 
 # Env randomness:
 spawn_resources_random: true
